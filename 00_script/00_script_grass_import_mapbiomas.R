@@ -22,50 +22,64 @@ rgrass::initGRASS(gisBase = system("grass --config path", inter = TRUE),
                   override = TRUE)
 
 # import limit
-rgrass::execGRASS("v.in.ogr",
-                  flags = c("overwrite"),
-                  input = "01_data/00_raw/limit_af_wwf_terr_ecos_biorregions_2017_gcs_wgs84.shp",
-                  output = "af_lim")
+# rgrass::execGRASS("v.in.ogr",
+#                   flags = c("overwrite"),
+#                   input = "01_data/00_raw/limit_af_wwf_terr_ecos_biorregions_2017_gcs_wgs84.shp",
+#                   output = "af_lim")
 
 # import mapbiomas brazil
-rgrass::execGRASS("r.in.gdal",
-                  flags = "overwrite",
-                  input = "01_data/00_raw/brasil_coverage_2023.tif",
-                  output = "mapbiomas_brazil_2023")
+# rgrass::execGRASS("r.in.gdal",
+#                   flags = "overwrite",
+#                   input = "01_data/00_raw/brasil_coverage_2023.tif",
+#                   output = "mapbiomas_brazil_2023")
 
 # import mapbiomas trinacional
-rgrass::execGRASS("r.in.gdal",
-                  flags = "overwrite",
-                  input = "01_data/00_raw/mapbiomas_atlantic_forest_collection4_integration_v1-classification_2023.tif",
-                  output = "mapbiomas_af_2023")
+# rgrass::execGRASS("r.in.gdal",
+#                   flags = "overwrite",
+#                   input = "01_data/00_raw/mapbiomas_atlantic_forest_collection4_integration_v1-classification_2023.tif",
+#                   output = "mapbiomas_af_trinacional_2023")
 
-# merge mapbiomas brazil and trinacional
-# region
-rgrass::execGRASS(cmd = "g.region", flags = c("a", "p"), res = "00:00:01",
-                  n = "-21.83", s = "-29.04", e = "-53.52", w = "-58.33")
+# region and mask
+rgrass::execGRASS(cmd = "g.region", flags = c("a", "p"), raster = "mapbiomas_brazil_2023,mapbiomas_af_trinacional_2023")
 
-# mapcalc
-rgrass::execGRASS(cmd = "r.mapcalc",
-                  flags = "overwrite",
-                  expression = paste0("mapbiomas_brazil_", i, "_e = if(mapbiomas_brazil_", i, "> 0, null(), 1)"))
-
-rgrass::execGRASS(cmd = "r.mapcalc",
-                  flags = "overwrite",
-                  expression = paste0("mapbiomas_af_trinacional_", i, "_e = mapbiomas_af_trinacional_", i, "* mapbiomas_brazil_", i, "_e"))
-
-# region
-rgrass::execGRASS(cmd = "g.region", flags = c("a", "p"), vector = "af_lim", res = "00:00:01")
+# zero by na
+rgrass::execGRASS(cmd = "r.mapcalc", flags = "overwrite", expression = "mapbiomas_brazil_2023_na = if(mapbiomas_brazil_2023 == 0, null(), mapbiomas_brazil_2023)")
+rgrass::execGRASS(cmd = "r.mapcalc", flags = "overwrite", expression = "mapbiomas_af_trinacional_2023_na = if(mapbiomas_af_trinacional_2023 == 0, null(), mapbiomas_af_trinacional_2023)")
 
 # patch
 rgrass::execGRASS(cmd = "r.patch",
                   flags = "overwrite",
-                  input = paste0("mapbiomas_af_trinacional_", i, "_e,mapbiomas_brazil_", i),
-                  output = paste0("mapbiomas_brazil_af_trinacional_", i))
+                  input = "mapbiomas_brazil_2023_na,mapbiomas_af_trinacional_2023_na",
+                  output = "mapbiomas_brazil_af_trinacional_2023",
+                  nprocs = 10,
+                  memory= 1000)
 
+# region and mask
+rgrass::execGRASS(cmd = "g.region", flags = c("a", "p"), vector = "af_lim")
+rgrass::execGRASS(cmd = "r.mask", flags = "overwrite", vector = "af_lim")
 
+# forest and vegetation
+rgrass::execGRASS(cmd = "r.mapcalc",
+                  flags = "overwrite",
+                  expression = "mapbiomas_brazil_af_trinacional_2023_forest = mapbiomas_brazil_af_trinacional_2023 == 3 || mapbiomas_brazil_af_trinacional_2023 == 5 || mapbiomas_brazil_af_trinacional_2023 == 49")
+
+rgrass::execGRASS(cmd = "r.mapcalc",
+                  flags = "overwrite",
+                  expression = "mapbiomas_brazil_af_trinacional_2023_natural = mapbiomas_brazil_af_trinacional_2023 == 3 || mapbiomas_brazil_af_trinacional_2023 == 5 || mapbiomas_brazil_af_trinacional_2023 == 49 || mapbiomas_brazil_af_trinacional_2023 == 4 || mapbiomas_brazil_af_trinacional_2023 == 6 || mapbiomas_brazil_af_trinacional_2023 == 11 || mapbiomas_brazil_af_trinacional_2023 == 12 || mapbiomas_brazil_af_trinacional_2023 == 50")
 
 # export
-rgrass::execGRASS(cmd = "g.region", flags = c("a", "p"), raster = "mapbiomas_brazil_af_trinacional_1985", res = "00:00:01")
-rgrass::execGRASS(cmd = "r.mask", flags = "overwrite", vector = "af_lim")
+rgrass::execGRASS(cmd = "r.out.gdal", 
+                  flags = "overwrite", 
+                  input = "mapbiomas_brazil_af_trinacional_2023_forest",
+                  output = "01_data/mapbiomas_brazil_af_trinacional_2023_forest.tif",
+                  format = "GTiff",
+                  createopt = "COMPRESS=DEFLATE,ZLEVEL=9,TILED=YES")
+
+rgrass::execGRASS(cmd = "r.out.gdal", 
+                  flags = "overwrite", 
+                  input = "mapbiomas_brazil_af_trinacional_2023_natural",
+                  output = "01_data/mapbiomas_brazil_af_trinacional_2023_natural,tif",
+                  format = "GTiff",
+                  createopt = "COMPRESS=DEFLATE,ZLEVEL=9,TILED=YES")
 
 # end ---------------------------------------------------------------------
